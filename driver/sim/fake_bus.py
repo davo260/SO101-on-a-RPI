@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 """Fake Feetech STS bus on a pseudo-terminal, for testing without hardware.
 
-    python3 sim/fake_bus.py [--ids 1-6] [--echo] [--corrupt 0.01]
+    python3 sim/fake_bus.py [--ids 1-6] [--echo] [--corrupt 0.01] [--wiggle]
 
 Prints the pty path (e.g. /dev/pts/5); point fts_tool at it.
 Implements PING, READ, WRITE, SYNC_READ, SYNC_WRITE on a 256-byte
 register table per servo, little endian like the STS series.
 """
 import argparse
+import math
 import os
 import random
 import select
@@ -30,6 +31,8 @@ def main():
     ap.add_argument("--ids", default="1-6")
     ap.add_argument("--echo", action="store_true", help="echo TX bytes like some adapters")
     ap.add_argument("--corrupt", type=float, default=0.0, help="probability of flipping a byte")
+    ap.add_argument("--wiggle", action="store_true",
+                    help="Present_Position follows a slow sine (fake leader moved by hand)")
     args = ap.parse_args()
 
     lo, hi = (int(x) for x in args.ids.split("-"))
@@ -48,6 +51,13 @@ def main():
     print(os.ttyname(slave), flush=True)
 
     buf = bytearray()
+    t0 = time.monotonic()
+
+    def wiggle():
+        t = time.monotonic() - t0
+        for sid, r in regs.items():
+            pos = int(2048 + 600 * math.sin(2 * math.pi * 0.3 * t + sid))
+            r[56:58] = pos.to_bytes(2, "little")
 
     def send(pkt):
         if args.corrupt and random.random() < args.corrupt:
@@ -74,6 +84,8 @@ def main():
             if checksum(pkt[2:-1]) != pkt[-1]:
                 continue
             time.sleep(0.0001)  # small servo turnaround
+            if args.wiggle:
+                wiggle()
             if inst == 0x01 and sid in regs:                       # PING
                 send(status(sid))
             elif inst == 0x02 and sid in regs:                     # READ
