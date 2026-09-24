@@ -2,8 +2,8 @@
  * calib.h - LeRobot calibration files and joint-space mapping.
  *
  * LeRobot stores one JSON per arm, e.g. on the Pi:
- *   ~/.cache/huggingface/lerobot/calibration/teleoperators/so101_leader/<id>.json
- *   ~/.cache/huggingface/lerobot/calibration/robots/so101_follower/<id>.json
+ *   ~/.cache/huggingface/lerobot/calibration/teleoperators/so_leader/so101_leader.json
+ *   ~/.cache/huggingface/lerobot/calibration/robots/so_follower/so101_follower.json
  * with, per joint: id, drive_mode, homing_offset, range_min, range_max.
  *
  * The homing offset already lives in each servo's EEPROM, so Present_Position

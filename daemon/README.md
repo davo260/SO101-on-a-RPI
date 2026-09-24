@@ -48,11 +48,11 @@ Modos: `IDLE` (torque off), `TELEOP`, `HOLD` (mantiene la pose de entrada),
 Cerrar LeRobot antes (el driver abre los puertos en exclusiva).
 
     CAL=~/.cache/huggingface/lerobot/calibration
-    ls $CAL/teleoperators/so101_leader/ $CAL/robots/so101_follower/
+    ls $CAL/teleoperators/so_leader/ $CAL/robots/so_follower/
 
     # modo IDLE: solo lee y publica (el seguidor queda sin torque)
-    ./build/so101d -L $CAL/teleoperators/so101_leader/<id>.json \
-                   -F $CAL/robots/so101_follower/<id>.json
+    ./build/so101d -L $CAL/teleoperators/so_leader/so101_leader.json \
+                   -F $CAL/robots/so_follower/so101_follower.json
 
     # en otra terminal
     ./build/so101ctl watch
