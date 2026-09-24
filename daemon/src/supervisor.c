@@ -150,6 +150,7 @@ void *supervisor_thread(void *arg)
     int64_t next_status = mono_ms() + STATUS_EVERY_MS;
     int64_t lock_zero_since = -1;
     unsigned last_mode = 0xFF;
+    uint16_t prev_ls = 0, prev_fs = 0;
     int last_ramp = 0;
 
     while (atomic_load_explicit(&c->run, memory_order_relaxed)) {
@@ -202,6 +203,13 @@ void *supervisor_thread(void *arg)
             raise_fault(shm, SO101_F_STALL, 1, SO101_MODE_ESTOP,
                         "control loop not publishing");
         }
+
+        if (prev_ls >= c->comm_streak && s.leader_streak == 0)
+            logf_("leader bus back (reconnected); 'reset' to clear the fault");
+        if (prev_fs >= c->comm_streak && s.follower_streak == 0)
+            logf_("follower bus back (reconnected); 'reset' to clear the fault");
+        prev_ls = s.leader_streak;
+        prev_fs = s.follower_streak;
 
         if (s.leader_streak >= c->comm_streak)
             raise_fault(shm, SO101_F_LEADER_COMM, 1, SO101_MODE_HOLD,

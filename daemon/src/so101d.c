@@ -2,7 +2,7 @@
  * so101d - SO-101 leader/follower daemon.
  *
  * Threads:
- *   main        set-up, signal handling (sigtimedwait), shutdown
+ *   main        set-up, signals, systemd notification + watchdog, shutdown
  *   control     100 Hz, SCHED_FIFO optional, sole owner of both buses
  *   supervisor  50 Hz, safety checks + command mailbox (named semaphores)
  *
@@ -13,6 +13,10 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <grp.h>
+#include <stdarg.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include <semaphore.h>
 #include <pthread.h>
 #include <sched.h>
@@ -41,7 +45,50 @@ static void usage(void)
         "  -T degC   follower over-temperature limit (default 60)\n"
         "  -t ms     bus timeout per status packet (default 4)\n"
         "  -e        adapters echo TX bytes\n"
-        "  -m mode   initial mode: idle (default), teleop, hold\n");
+        "  -m mode   initial mode: idle (default), teleop, hold\n"
+        "  -g group  shm/semaphores owned by this group, mode 0660 (default 0666)\n");
+}
+
+/* ------------------------------------------------------------------ */
+/* systemd notification protocol (sd_notify), without libsystemd:      */
+/* one datagram to the unix socket named in $NOTIFY_SOCKET.            */
+/* ------------------------------------------------------------------ */
+static void sd_notifyf(const char *fmt, ...)
+{
+    const char *path = getenv("NOTIFY_SOCKET");
+    if (!path || (path[0] != '/' && path[0] != '@'))
+        return;                                  /* not under systemd */
+    char msg[256];
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(msg, sizeof msg, fmt, ap);
+    va_end(ap);
+    if (n <= 0)
+        return;
+    struct sockaddr_un sa = { .sun_family = AF_UNIX };
+    size_t plen = strlen(path);
+    if (plen >= sizeof sa.sun_path)
+        return;
+    memcpy(sa.sun_path, path, plen);
+    if (sa.sun_path[0] == '@')
+        sa.sun_path[0] = '\0';                   /* abstract namespace */
+    int fd = socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+    if (fd < 0)
+        return;
+    sendto(fd, msg, (size_t)(n < (int)sizeof msg ? n : (int)sizeof msg - 1), 0,
+           (struct sockaddr *)&sa, (socklen_t)(offsetof(struct sockaddr_un, sun_path) + plen));
+    close(fd);
+}
+
+/* Watchdog interval requested by systemd (WatchdogSec=), in microseconds */
+static uint64_t sd_watchdog_usec(void)
+{
+    const char *u = getenv("WATCHDOG_USEC"), *p = getenv("WATCHDOG_PID");
+    if (!u)
+        return 0;
+    if (p && atoi(p) != getpid())
+        return 0;
+    return strtoull(u, NULL, 10);
 }
 
 static int parse_mode(const char *s, unsigned *m)
@@ -56,7 +103,7 @@ static int parse_mode(const char *s, unsigned *m)
  * daemon fail fast (TIOCEXCL on the ttys does not stop root). */
 static so101_shm_t *shm_create(so101d_ctx *c, int *fd_out)
 {
-    int fd = shm_open(SO101_SHM_NAME, O_CREAT | O_RDWR | O_CLOEXEC, 0666);
+    int fd = shm_open(SO101_SHM_NAME, O_CREAT | O_RDWR | O_CLOEXEC, c->ipc_mode);
     if (fd < 0) {
         perror("shm_open");
         return NULL;
@@ -67,7 +114,10 @@ static so101_shm_t *shm_create(so101d_ctx *c, int *fd_out)
         close(fd);
         return NULL;
     }
-    fchmod(fd, 0666);   /* clients write the mailbox; tightened in step 3 */
+    /* Clients write the mailbox: they need rw. With -g only that group. */
+    if (c->ipc_gid != (gid_t)-1 && fchown(fd, (uid_t)-1, c->ipc_gid) != 0)
+        perror("so101d: fchown shm");
+    fchmod(fd, c->ipc_mode);
     if (ftruncate(fd, sizeof(so101_shm_t)) != 0) {
         perror("ftruncate");
         close(fd);
@@ -114,13 +164,23 @@ static int sems_create(so101d_ctx *c)
 {
     sem_unlink(SO101_SEM_CMD_LOCK);
     sem_unlink(SO101_SEM_CMD_READY);
-    mode_t old = umask(0);                 /* clients need rw: 0666 */
-    c->sem_lock = sem_open(SO101_SEM_CMD_LOCK, O_CREAT | O_EXCL, 0666, 1);
-    c->sem_ready = sem_open(SO101_SEM_CMD_READY, O_CREAT | O_EXCL, 0666, 0);
+    mode_t old = umask(0);
+    c->sem_lock = sem_open(SO101_SEM_CMD_LOCK, O_CREAT | O_EXCL, c->ipc_mode, 1);
+    c->sem_ready = sem_open(SO101_SEM_CMD_READY, O_CREAT | O_EXCL, c->ipc_mode, 0);
     umask(old);
     if (c->sem_lock == SEM_FAILED || c->sem_ready == SEM_FAILED) {
         perror("so101d: sem_open");
+        if (errno == EEXIST)
+            fprintf(stderr, "so101d: stale semaphores owned by another user "
+                            "(left by a manual sudo run?): "
+                            "sudo rm /dev/shm/sem.so101_cmd_*\n");
         return -1;
+    }
+    if (c->ipc_gid != (gid_t)-1) {
+        /* glibc keeps named semaphores as /dev/shm/sem.<name> */
+        if (chown("/dev/shm/sem" "." "so101_cmd_lock", (uid_t)-1, c->ipc_gid) ||
+            chown("/dev/shm/sem" "." "so101_cmd_ready", (uid_t)-1, c->ipc_gid))
+            perror("so101d: chown semaphores");
     }
     return 0;
 }
@@ -155,9 +215,10 @@ int main(int argc, char **argv)
         .ramp_step = 6, .ramp_done = 50,
         .bus_timeout_ms = 4, .initial_mode = SO101_MODE_IDLE,
         .temp_limit = 60, .vmin_dv = 45, .vmax_dv = 84, .comm_streak = 10,
+        .ipc_gid = (gid_t)-1, .ipc_mode = 0666,
     };
     int opt;
-    while ((opt = getopt(argc, argv, "l:f:L:F:R:rP:C:s:a:T:t:em:h")) != -1) {
+    while ((opt = getopt(argc, argv, "l:f:L:F:R:rP:C:s:a:T:t:em:g:h")) != -1) {
         switch (opt) {
         case 'l': c.leader_port = optarg; break;
         case 'f': c.follower_port = optarg; break;
@@ -172,6 +233,16 @@ int main(int argc, char **argv)
         case 'T': c.temp_limit = atoi(optarg); break;
         case 't': c.bus_timeout_ms = atoi(optarg); break;
         case 'e': c.echo = 1; break;
+        case 'g': {
+            struct group *g = getgrnam(optarg);
+            if (!g) {
+                fprintf(stderr, "so101d: unknown group '%s'\n", optarg);
+                return 2;
+            }
+            c.ipc_gid = g->gr_gid;
+            c.ipc_mode = 0660;
+            break;
+        }
         case 'm':
             if (parse_mode(optarg, &c.initial_mode)) { usage(); return 2; }
             break;
@@ -263,14 +334,47 @@ int main(int argc, char **argv)
             c.freq, c.realtime ? "SCHED_FIFO" : "SCHED_OTHER", c.leader_port,
             c.follower_port, so101_mode_name(c.initial_mode));
 
-    /* Main thread: just wait for SIGINT/SIGTERM */
+    /* Main thread: signals + systemd watchdog.
+     * WATCHDOG=1 is sent only if BOTH the control loop (cycle) and the
+     * supervisor (sup_beat) made progress since the last check. If either
+     * hangs, systemd stops receiving pings and restarts the service. */
+    const uint64_t wd_usec = sd_watchdog_usec();
+    const uint64_t chk_usec = wd_usec ? wd_usec / 2 : 1000000;
+    struct timespec chk = { .tv_sec = (time_t)(chk_usec / 1000000),
+                            .tv_nsec = (long)(chk_usec % 1000000) * 1000 };
+    sd_notifyf("READY=1\nSTATUS=running, mode %s", so101_mode_name(c.initial_mode));
+    if (wd_usec)
+        fprintf(stderr, "so101d: systemd watchdog every %.1f s\n", wd_usec / 1e6);
+
+    uint64_t last_cycle = 0, last_beat = 0;
+    int healthy = 1;
     for (;;) {
-        int sig = sigwaitinfo(&sigs, NULL);
+        int sig = sigtimedwait(&sigs, NULL, &chk);
         if (sig == SIGINT || sig == SIGTERM) {
             fprintf(stderr, "so101d: signal %d, shutting down\n", sig);
             break;
         }
+        so101_sample_t s;
+        if (so101_shm_read(c.shm, &s, 100) < 0)
+            continue;
+        uint64_t beat = atomic_load(&c.shm->sup_beat);
+        const int ctl_ok = (s.cycle != last_cycle), sup_ok = (beat != last_beat);
+        const int alive = ctl_ok && sup_ok;
+        last_cycle = s.cycle;
+        last_beat = beat;
+        if (alive) {
+            sd_notifyf("WATCHDOG=1\nSTATUS=mode %s%s, cycle %llu, faults 0x%02x",
+                       so101_mode_name(s.mode), s.ramping ? " (soft start)" : "",
+                       (unsigned long long)s.cycle, s.faults);
+            if (!healthy)
+                fprintf(stderr, "so101d: threads alive again\n");
+        } else if (healthy) {
+            fprintf(stderr, "so101d: WATCHDOG: %s stuck, not pinging systemd\n",
+                    !ctl_ok ? "control loop" : "supervisor");
+        }
+        healthy = alive;
     }
+    sd_notifyf("STOPPING=1");
 
     atomic_store(&c.run, 0);
     pthread_join(th_sup, NULL);

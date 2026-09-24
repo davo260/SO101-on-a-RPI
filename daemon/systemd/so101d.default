@@ -1,0 +1,5 @@
+# /etc/default/so101d - command line of so101d (run "so101d -h" for all options)
+#   -r         SCHED_FIFO + mlockall          -C 3   pin control thread to core 3
+#   -g so101   shm/semaphores rw only for group so101
+#   -m idle    start mode (never start in teleop unattended)
+SO101D_ARGS="-r -C 3 -g so101 -m idle -L /etc/so101/so101_leader.json -F /etc/so101/so101_follower.json"

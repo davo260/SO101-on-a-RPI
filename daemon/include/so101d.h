@@ -6,6 +6,7 @@
 
 #include <semaphore.h>
 #include <stdatomic.h>
+#include <sys/types.h>
 
 #include "calib.h"
 #include "feetech.h"
@@ -27,6 +28,8 @@ typedef struct {
     int         bus_timeout_ms;
     int         echo;           /* adapters echo TX bytes              */
     unsigned    initial_mode;
+    gid_t       ipc_gid;        /* group owning shm + semaphores (-g)  */
+    mode_t      ipc_mode;       /* 0660 with -g, 0666 without          */
 
     /* supervisor limits */
     int         temp_limit;     /* deg C                               */

@@ -1,0 +1,49 @@
+# so101d.service - SO-101 leader/follower real-time daemon
+# Installed by daemon/systemd/install.sh into /etc/systemd/system/
+[Unit]
+Description=SO-101 leader/follower real-time daemon
+Documentation=https://github.com/davo260/SO101-on-a-RPI
+After=local-fs.target
+# Give up after 5 failed starts in 60 s (e.g. arm not connected)
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+# so101d sends READY=1 when its threads are up, then WATCHDOG=1 every
+# WatchdogSec/2 only while BOTH the control loop and the supervisor progress.
+Type=notify
+NotifyAccess=main
+WatchdogSec=2
+Restart=on-failure
+RestartSec=2
+TimeoutStopSec=5
+
+EnvironmentFile=/etc/default/so101d
+ExecStartPre=/usr/local/libexec/so101-wait-ports
+ExecStart=/usr/local/bin/so101d $SO101D_ARGS
+
+# Unprivileged user; serial ports through the dialout group
+User=so101
+Group=so101
+SupplementaryGroups=dialout
+UMask=0007
+
+# Real time without root: SCHED_FIFO + mlockall
+AmbientCapabilities=CAP_SYS_NICE CAP_IPC_LOCK
+CapabilityBoundingSet=CAP_SYS_NICE CAP_IPC_LOCK
+LimitRTPRIO=99
+LimitMEMLOCK=infinity
+
+# Hardening: read-only system, no home, only unix sockets (sd_notify)
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictAddressFamilies=AF_UNIX
+LockPersonality=yes
+
+[Install]
+WantedBy=multi-user.target

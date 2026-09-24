@@ -93,6 +93,34 @@ Cerrar LeRobot antes (el driver abre los puertos en exclusiva).
 
 Si `fts_tool raw` reportó eco en el adaptador, añadir `-e`.
 
+## Servicio systemd
+    cd daemon && sudo ./systemd/install.sh     # compila, instala, crea usuario so101
+    sudo systemctl start so101d                # y 'enable' para arrancar al encender
+    journalctl -u so101d -f
+    so101ctl watch                             # tu usuario queda en el grupo so101
+
+- `Type=notify`: el demonio avisa `READY=1` cuando sus hilos están arriba y
+  publica su estado (`systemctl status so101d` muestra modo, ciclo y fallas).
+- **Watchdog** (`WatchdogSec=2`): el hilo principal envía `WATCHDOG=1` solo si
+  el lazo de control **y** el supervisor avanzaron desde la última revisión.
+  Si alguno se cuelga, systemd mata el proceso y lo reinicia
+  (`Restart=on-failure`). Al reiniciar, el arranque seguro deja el seguidor sin
+  torque.
+- Usuario sin privilegios `so101` (grupo `dialout` para los puertos) con
+  `CAP_SYS_NICE` + `CAP_IPC_LOCK` para SCHED_FIFO y `mlockall` sin root.
+  Sistema de archivos de solo lectura (`ProtectSystem=strict`), sin acceso a
+  `/home`, solo sockets UNIX.
+- Memoria compartida y semáforos con permisos `0660` y grupo `so101` (`-g so101`):
+  solo los miembros del grupo pueden leer el estado o mandar comandos.
+- `ExecStartPre` espera hasta 30 s a que existan `/dev/so101_leader` y
+  `/dev/so101_follower`.
+- Configuración: `/etc/default/so101d`. Calibración copiada a `/etc/so101/`.
+- **Reconexión:** si un USB se desconecta, el hilo de control reabre el puerto
+  cada 0.5 s; al volver, el supervisor lo informa y basta `so101ctl reset`.
+
+Demostración del watchdog: `sudo kill -STOP $(pidof so101d)` congela el
+proceso; a los 2 s `journalctl` muestra el timeout y systemd lo reinicia.
+
 ## Sin hardware
     python3 ../driver/sim/fake_bus.py --wiggle   # líder simulado, imprime /dev/pts/A
     python3 ../driver/sim/fake_bus.py            # seguidor simulado, /dev/pts/B

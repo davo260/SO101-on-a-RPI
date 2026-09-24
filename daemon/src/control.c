@@ -12,6 +12,10 @@
  *      target on every joint; then the (fast) teleop limit max_step applies.
  *   6. publish the snapshot to shared memory (seqlock, never blocks)
  *
+ * Reconnection: if a bus fails REOPEN_AFTER cycles in a row (USB unplugged),
+ * the port is closed and re-opened every REOPEN_AFTER cycles. open() only
+ * happens in this fault state, so it never disturbs normal cycles.
+ *
  * No malloc, no printf, no locks inside the loop.
  */
 #define _GNU_SOURCE
@@ -22,6 +26,7 @@
 #include <time.h>
 
 #define NSEC_PER_SEC 1000000000LL
+#define REOPEN_AFTER 50      /* cycles (0.5 s at 100 Hz) */
 
 static inline int64_t mono_ns(void)
 {
@@ -33,6 +38,16 @@ static inline int64_t mono_ns(void)
 static inline uint16_t le16(const uint8_t *p)
 {
     return (uint16_t)(p[0] | (p[1] << 8));
+}
+
+/* Close and re-open a dead bus, keeping its settings. */
+static void reopen_bus(fts_bus *bus, const char *path)
+{
+    const int timeout = bus->timeout_ms, echo = bus->echo;
+    fts_close(bus);
+    fts_open(bus, path, 1000000);   /* on failure fd = -1: reads fail fast */
+    bus->timeout_ms = timeout;
+    bus->echo = echo;
 }
 
 static int set_torque(fts_bus *bus, const uint8_t *ids, int on)
@@ -79,6 +94,7 @@ void *control_thread(void *arg)
     set_torque(&c->leader, ids_l, 0);
 
     int64_t next = mono_ns() + period;
+    uint64_t retry_l = 0, retry_f = 0;    /* next reconnection attempt (cycle) */
 
     while (atomic_load_explicit(&c->run, memory_order_relaxed)) {
         struct timespec ts = { .tv_sec = next / NSEC_PER_SEC,
@@ -104,6 +120,11 @@ void *control_thread(void *arg)
             s.leader_errs++;
         }
         s.leader_streak = s.leader_ok ? 0 : (uint16_t)(s.leader_streak + (s.leader_streak < 0xFFFF));
+        if (s.leader_streak >= REOPEN_AFTER && s.cycle >= retry_l) {
+            reopen_bus(&c->leader, c->leader_port);
+            set_torque(&c->leader, ids_l, 0);          /* leader stays passive */
+            retry_l = s.cycle + REOPEN_AFTER;
+        }
 
         /* ---- 2. follower state: addr 56..63 = pos, vel, load, volt, temp ---- */
         rc = fts_sync_read(&c->follower, ids_f, SO101_NJ, STS_PRESENT_POSITION, 8, bf);
@@ -122,6 +143,14 @@ void *control_thread(void *arg)
             s.follower_errs++;
         }
         s.follower_streak = s.follower_ok ? 0 : (uint16_t)(s.follower_streak + (s.follower_streak < 0xFFFF));
+        if (s.follower_streak >= REOPEN_AFTER && s.cycle >= retry_f) {
+            reopen_bus(&c->follower, c->follower_port);
+            retry_f = s.cycle + REOPEN_AFTER;
+            /* torque state is unknown after a disconnect: the supervisor has
+             * already forced IDLE, so make it true on the servos as well */
+            set_torque(&c->follower, ids_f, 0);
+            torque = 0;
+        }
 
         /* ---- 3. mode transitions requested by the supervisor ---- */
         unsigned req = atomic_load_explicit(&shm->mode_req, memory_order_acquire);
