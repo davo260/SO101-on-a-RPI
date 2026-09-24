@@ -5,7 +5,7 @@ CFLAGS  += -Iinclude -I$(DRV)/include
 LDLIBS  := -pthread -lrt -lm
 BIN     := build
 
-DAEMON_SRC := src/so101d.c src/control.c src/calib.c $(DRV)/src/feetech.c
+DAEMON_SRC := src/so101d.c src/control.c src/supervisor.c src/calib.c $(DRV)/src/feetech.c
 HDRS       := $(wildcard include/*.h) $(DRV)/include/feetech.h
 
 all: $(BIN)/so101d $(BIN)/so101ctl $(BIN)/test_calib

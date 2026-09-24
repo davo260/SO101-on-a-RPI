@@ -193,6 +193,11 @@ static int fill_rx(fts_bus *bus, int64_t deadline)
         return errno == EINTR ? 0 : FTS_ERR_IO;
     if (r == 0)
         return FTS_ERR_TIMEOUT;
+    /* Adapter unplugged / pty closed: poll() reports HUP/ERR forever and
+     * read() returns 0, which would otherwise spin until the deadline... or
+     * forever. Treat it as an I/O error. */
+    if (!(pfd.revents & POLLIN) && (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)))
+        return FTS_ERR_IO;
     if (bus->rxlen >= FTS_RXBUF_SIZE) {      /* should never happen */
         bus->stats.bytes_discarded += (uint32_t)bus->rxlen;
         bus->rxlen = 0;
@@ -201,6 +206,8 @@ static int fill_rx(fts_bus *bus, int64_t deadline)
                      FTS_RXBUF_SIZE - bus->rxlen);
     if (n < 0)
         return errno == EINTR ? 0 : FTS_ERR_IO;
+    if (n == 0)
+        return FTS_ERR_IO;               /* EOF: device gone */
     bus->rxlen += (size_t)n;
     return FTS_OK;
 }
@@ -275,7 +282,11 @@ static int rx_status(fts_bus *bus, uint8_t expect_id, uint8_t *out,
             drop_rx(bus, consumed);
             continue;
         }
-        /* r == 0: need more bytes */
+        /* r == 0: need more bytes (the deadline bounds garbage floods too) */
+        if (now_ms() > deadline) {
+            bus->stats.timeouts++;
+            return FTS_ERR_TIMEOUT;
+        }
         int rc = fill_rx(bus, deadline);
         if (rc == FTS_ERR_TIMEOUT) {
             bus->stats.timeouts++;

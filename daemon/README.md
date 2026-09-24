@@ -12,7 +12,7 @@ POSIX para cualquier cliente (CLI, puente MQTT/sockets, ROS 2).
                       ├─►│ hilo de control (100 Hz, SCHED_FIFO) │── seqlock ──► /dev/shm/so101
   /dev/so101_follower◄┘  │  único dueño de los dos buses        │               (estado)
                          ├──────────────────────────────────────┤
-                         │ hilo supervisor (paso 2)             │◄── buzón + semáforos ── clientes
+                         │ hilo supervisor (50 Hz)              │◄── buzón + semáforos ── clientes
                          │  seguridad, comandos, watchdog       │    /so101_cmd_lock
                          ├──────────────────────────────────────┤    /so101_cmd_ready
                          │ hilo principal: señales, apagado     │
@@ -24,7 +24,10 @@ POSIX para cualquier cliente (CLI, puente MQTT/sockets, ROS 2).
   leyeron durante una escritura.
 - **Modo (supervisor → control):** `mode_req` atómico, leído una vez por ciclo.
 - **Comandos (clientes → supervisor):** buzón en la misma shm, protegido por
-  semáforos POSIX con nombre (paso 2).
+  dos semáforos POSIX con nombre: `/so101_cmd_lock` (exclusión mutua entre
+  clientes) y `/so101_cmd_ready` (despierta al supervisor). El cliente toma
+  el lock, escribe, hace `sem_post(ready)`, espera `ack.id == id` y suelta el
+  lock. Si un cliente muere con el lock tomado, el supervisor lo libera a los 2 s.
 - El contrato completo está en `include/so101_shm.h`.
 
 ### Ciclo de control
@@ -40,6 +43,31 @@ POSIX para cualquier cliente (CLI, puente MQTT/sockets, ROS 2).
 
 Modos: `IDLE` (torque off), `TELEOP`, `HOLD` (mantiene la pose de entrada),
 `ESTOP` (torque off, enclavado).
+
+**Arranque suave:** en cada entrada a TELEOP/HOLD la meta avanza a `-a`
+ticks/ciclo (6 ≈ 53 °/s) hasta quedar a menos de 50 ticks del objetivo en
+todas las articulaciones; después rige el límite de teleop `-s` (50).
+
+### Supervisor
+Único escritor de `mode_req` y `faults`. Espera en `sem_timedwait(ready, 20 ms)`:
+un comando lo despierta al instante; si no, el timeout es su tick de 50 Hz.
+
+| Falla | Condición | Acción |
+|---|---|---|
+| `STALL` | el lazo no publica en 200 ms | → ESTOP |
+| `LEADER_COMM` | 10 lecturas fallidas seguidas del líder | TELEOP → HOLD |
+| `FOLLOWER_COMM` | 10 lecturas fallidas seguidas del seguidor | → IDLE |
+| `OVERTEMP` | algún servo ≥ `-T` (60 °C) durante 100 ms | → IDLE |
+| `VOLTAGE` | alimentación fuera de 4.5–8.4 V durante 100 ms | → IDLE |
+| `OVERRUN` | > 5 overruns en 1 s | solo aviso |
+| `ESTOP` | comando `estop` | → ESTOP |
+
+Las fallas quedan enclavadas: con fallas activas se rechaza `teleop`/`hold`
+hasta un `reset` (si la causa persiste, la falla vuelve a aparecer).
+
+### so101ctl
+    so101ctl status | watch [hz]
+    so101ctl teleop | hold | idle | estop | reset | ping
 
 ## Compilar y probar
     make && make test
@@ -57,8 +85,11 @@ Cerrar LeRobot antes (el driver abre los puertos en exclusiva).
     # en otra terminal
     ./build/so101ctl watch
 
-    # teleoperación con tiempo real, hilo de control fijado al núcleo 3
-    sudo ./build/so101d -r -C 3 -m teleop -L ... -F ...
+    # tiempo real, hilo de control fijado al núcleo 3; los modos por comando
+    sudo ./build/so101d -r -C 3 -L ... -F ...
+    ./build/so101ctl teleop      # arranque suave y luego teleoperación
+    ./build/so101ctl hold
+    ./build/so101ctl estop       # y luego: reset
 
 Si `fts_tool raw` reportó eco en el adaptador, añadir `-e`.
 

@@ -15,6 +15,16 @@
  *      SO101_SEM_CMD_READY  counting semaphore, "a command is waiting"
  *    The supervisor answers in `ack` (same id as the command).
  *
+ *    Client protocol (so101ctl does exactly this):
+ *      1. sem_timedwait(CMD_LOCK)        take the mailbox
+ *      2. write cmd {id, cmd, arg, pid}
+ *      3. sem_post(CMD_READY)            wake the supervisor
+ *      4. wait until ack.id == id        (poll, ~1 s timeout)
+ *      5. sem_post(CMD_LOCK)             release the mailbox
+ *    Holding the lock until the ack is read guarantees that neither `cmd` nor
+ *    `ack` is overwritten by another client in between. If a client dies while
+ *    holding the lock, the supervisor releases it after 2 s.
+ *
  * All fields have fixed-size types and explicit padding so the layout can be
  * decoded from Python (mmap + struct) as well. Bump SO101_SHM_VERSION on any
  * layout change.
@@ -31,7 +41,7 @@
 #define SO101_SEM_CMD_LOCK   "/so101_cmd_lock"
 #define SO101_SEM_CMD_READY  "/so101_cmd_ready"
 #define SO101_SHM_MAGIC      0x31303153u      /* "S101" little endian */
-#define SO101_SHM_VERSION    1
+#define SO101_SHM_VERSION    2
 #define SO101_NJ             6
 
 /* Operating modes (requested by the supervisor, applied by the control thread) */
@@ -101,6 +111,11 @@ typedef struct {
     uint32_t follower_errs;      /* failed follower sync-reads               */
     int32_t  max_wake_lat_ns;
     int32_t  max_exec_ns;
+
+    uint16_t leader_streak;      /* consecutive failed leader reads          */
+    uint16_t follower_streak;    /* consecutive failed follower reads        */
+    uint8_t  ramping;            /* 1 while converging after torque-on       */
+    uint8_t  _pad1[3];
 } so101_sample_t;
 
 typedef struct {
