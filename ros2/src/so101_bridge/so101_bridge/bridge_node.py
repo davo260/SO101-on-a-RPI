@@ -7,11 +7,14 @@ Topics
   /so101/cmd  (subscribed)       std_msgs/String          idle|teleop|hold|estop|reset
 
 A plain (non real-time) shared-memory client, like so101ctl or so101_log: it
-never disturbs the 100 Hz control loop. Needs so101.py (clients/python) on
+never disturbs the 100 Hz control loop. If so101d is not running yet, or
+restarts (systemd watchdog, reboot), the node keeps running and re-attaches to
+the new shared-memory segment by itself. Needs so101.py (clients/python) on
 PYTHONPATH and read access to /dev/shm/so101 (group so101).
 """
 import json
 import math
+import time
 
 import rclpy
 from rclpy.node import Node
@@ -38,7 +41,9 @@ class So101Bridge(Node):
         self.l_conv = TickToRad(load_calibration(l_cal),
                                 p("leader_signs", [1.0] * 6).value,
                                 p("leader_offsets", [0.0] * 6).value)
-        self.arm = So101()
+        self.arm = None
+        self._next_attach = 0.0
+        self._attach()
         self.pub_f = self.create_publisher(JointState, "joint_states", 10)
         self.pub_l = self.create_publisher(JointState, "so101/leader/joint_states", 10)
         self.pub_status = self.create_publisher(String, "so101/status", 10)
@@ -46,12 +51,39 @@ class So101Bridge(Node):
         self.create_timer(1.0 / rate, self.tick)
         self.create_timer(1.0, self.status)
         self.last_cycle = None
+        self.rate = rate
+
+    def _attach(self):
+        """(Re)attach to /dev/shm/so101; retried at most once per second."""
+        now = time.monotonic()
+        if now < self._next_attach:
+            return False
+        self._next_attach = now + 1.0
+        try:
+            arm = So101()
+        except (FileNotFoundError, RuntimeError, PermissionError) as e:
+            if self.arm is not None or not getattr(self, "_warned", False):
+                self.get_logger().warn(f"waiting for so101d ({e})")
+                self._warned = True
+            self.arm = None
+            return False
+        if self.arm is not None:
+            self.arm.close()
+        self.arm = arm
+        self._warned = False
+        self.last_cycle = None
         self.get_logger().info(
-            f"so101d pid {self.arm.pid}, publishing /joint_states at {rate:.0f} Hz")
+            f"attached to so101d pid {arm.pid}, publishing /joint_states at "
+            f"{self.get_parameter('rate_hz').value:.0f} Hz")
+        return True
+
+    def _ready(self):
+        if self.arm is not None and self.arm.alive():
+            return True
+        return self._attach()          # daemon absent or restarted
 
     def tick(self):
-        if not self.arm.alive():
-            self.get_logger().error("so101d stopped", throttle_duration_sec=5.0)
+        if not self._ready():
             return
         st = self.arm.read()
         if st["cycle"] == self.last_cycle:
@@ -75,7 +107,7 @@ class So101Bridge(Node):
             self.pub_l.publish(m)
 
     def status(self):
-        if not self.arm.alive():
+        if not self._ready():
             return
         st = self.arm.read()
         self.pub_status.publish(String(data=json.dumps({
@@ -86,6 +118,9 @@ class So101Bridge(Node):
 
     def on_cmd(self, msg):
         name = msg.data.strip().lower()
+        if not self._ready():
+            self.get_logger().warn(f"cmd {name} ignored: so101d not running")
+            return
         try:
             res = self.arm.command(name)
         except Exception as e:                        # bad name, permissions, timeout
