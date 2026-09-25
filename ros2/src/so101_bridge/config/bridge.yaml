@@ -16,5 +16,5 @@ so101_bridge:
     # Live tuning (no rebuild), from any ROS 2 machine:
     #   ros2 param set /so101_bridge follower_gripper_rad "[-0.3, 1.745]"
     # then copy the value you like here and re-run run_bridge.sh.
-    follower_gripper_rad: [0.0, 1.745]
+    follower_gripper_rad: [-0.18, 1.745]   # tuned on the real arm (1 cm gap when closed)
     leader_gripper_rad:   [0.0, 0.785]
