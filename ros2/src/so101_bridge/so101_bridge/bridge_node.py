@@ -37,10 +37,12 @@ class So101Bridge(Node):
         l_cal = p("leader_calibration", "/etc/so101/so101_leader.json").value
         self.f_conv = TickToRad(load_calibration(f_cal),
                                 p("follower_signs", [1.0] * 6).value,
-                                p("follower_offsets", [0.0] * 6).value)
+                                p("follower_offsets", [0.0] * 6).value,
+                                p("follower_gripper_rad", [0.0, 1.745]).value)
         self.l_conv = TickToRad(load_calibration(l_cal),
                                 p("leader_signs", [1.0] * 6).value,
-                                p("leader_offsets", [0.0] * 6).value)
+                                p("leader_offsets", [0.0] * 6).value,
+                                p("leader_gripper_rad", [0.0, 0.785]).value)
         self.arm = None
         self._next_attach = 0.0
         self._attach()

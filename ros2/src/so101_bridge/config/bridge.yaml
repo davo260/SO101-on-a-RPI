@@ -10,3 +10,8 @@ so101_bridge:
     follower_offsets: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
     leader_signs:     [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
     leader_offsets:   [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    # Gripper: calibration range_min (closed) .. range_max (open) mapped linearly
+    # to [closed_rad, open_rad] of each URDF. If the jaws still overlap when
+    # closed, raise closed_rad a little (e.g. 0.05); if they never touch, lower it.
+    follower_gripper_rad: [0.0, 1.745]
+    leader_gripper_rad:   [0.0, 0.785]

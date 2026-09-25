@@ -22,3 +22,12 @@ def test_quarter_turn_and_sign():
     assert abs(out[0] - math.pi / 2) < 1e-9
     assert abs(out[1] + math.pi / 2) < 1e-9
     assert abs(out[2] - (math.pi / 2 + 0.1)) < 1e-9
+
+
+def test_gripper_linear_map():
+    ranges = [(0, 4095)] * 5 + [(2000, 3000)]
+    conv = TickToRad(ranges, gripper_rad=(0.0, 1.745))
+    assert abs(conv([2048] * 5 + [2000])[-1] - 0.0) < 1e-9      # closed
+    assert abs(conv([2048] * 5 + [3000])[-1] - 1.745) < 1e-9    # open
+    assert abs(conv([2048] * 5 + [2500])[-1] - 0.8725) < 1e-9   # half
+    assert abs(conv([2048] * 5 + [1500])[-1] - 0.0) < 1e-9      # clamped
