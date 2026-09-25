@@ -114,7 +114,7 @@ typedef struct {
 
     uint16_t leader_streak;      /* consecutive failed leader reads          */
     uint16_t follower_streak;    /* consecutive failed follower reads        */
-    uint8_t  ramping;            /* 1 while converging after torque-on       */
+    uint8_t  ramping;            /* bit j set: joint j still in soft start   */
     uint8_t  _pad1[3];
 } so101_sample_t;
 

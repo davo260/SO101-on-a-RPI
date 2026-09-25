@@ -44,9 +44,11 @@ POSIX para cualquier cliente (CLI, puente MQTT/sockets, ROS 2).
 Modos: `IDLE` (torque off), `TELEOP`, `HOLD` (mantiene la pose de entrada),
 `ESTOP` (torque off, enclavado).
 
-**Arranque suave:** en cada entrada a TELEOP/HOLD la meta avanza a `-a`
-ticks/ciclo (6 ≈ 53 °/s) hasta quedar a menos de 50 ticks del objetivo en
-todas las articulaciones; después rige el límite de teleop `-s` (50).
+**Arranque suave:** en cada entrada a TELEOP/HOLD cada articulación avanza a
+`-a` ticks/ciclo (6 ≈ 53 °/s) hasta alcanzar su objetivo (a menos de 50 ticks);
+desde ahí esa articulación usa el límite de teleop `-s` (50). Es por
+articulación para que un líder en movimiento no deje el brazo atrapado en la
+rampa lenta.
 
 ### Supervisor
 Único escritor de `mode_req` y `faults`. Espera en `sem_timedwait(ready, 20 ms)`:
@@ -120,6 +122,24 @@ Si `fts_tool raw` reportó eco en el adaptador, añadir `-e`.
 
 Demostración del watchdog: `sudo kill -STOP $(pidof so101d)` congela el
 proceso; a los 2 s `journalctl` muestra el timeout y systemd lo reinicia.
+
+## Registro y gráfica de la teleoperación
+`so101_log` es un cliente normal (sin tiempo real) de la memoria compartida:
+lee el seqlock a 500 Hz y escribe cada ciclo nuevo una sola vez en un CSV; al
+final informa cuántos ciclos no alcanzó a leer. No afecta al lazo.
+
+    # en la Pi, con so101d corriendo
+    so101_log -o teleop.csv -d 30          # 30 s (sin -d: hasta Ctrl+C)
+    so101ctl teleop                        # y mover el líder
+
+    # en el Mac
+    scp samu@<ip-pi>:teleop.csv .
+    python3 daemon/scripts/plot_teleop.py teleop.csv -o teleop.png
+
+`plot_teleop.py` grafica líder y seguidor por articulación (unidades LeRobot)
+y estima el **retraso** por correlación cruzada en el tramo más largo de
+TELEOP después del arranque suave. En simulación: 10 ms (un ciclo) con
+`-s 50` y ~440 ms con `-s 5` (el límite de velocidad domina).
 
 ## Sin hardware
     python3 ../driver/sim/fake_bus.py --wiggle   # líder simulado, imprime /dev/pts/A

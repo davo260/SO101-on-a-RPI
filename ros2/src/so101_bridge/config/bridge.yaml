@@ -1,0 +1,12 @@
+so101_bridge:
+  ros__parameters:
+    rate_hz: 50.0
+    follower_calibration: /etc/so101/so101_follower.json
+    leader_calibration: /etc/so101/so101_leader.json
+    # Tune once with the arm in its calibration middle pose: if a joint in RViz
+    # turns the other way, flip its sign; if it is shifted, set an offset (rad).
+    # Order: shoulder_pan, shoulder_lift, elbow_flex, wrist_flex, wrist_roll, gripper
+    follower_signs:   [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    follower_offsets: [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    leader_signs:     [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+    leader_offsets:   [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]

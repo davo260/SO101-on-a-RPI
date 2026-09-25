@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.8)
+project(so101_description)
+find_package(ament_cmake REQUIRED)
+if(NOT EXISTS ${CMAKE_CURRENT_SOURCE_DIR}/urdf/so101_follower.urdf)
+  message(FATAL_ERROR "Model missing: run ./fetch_model.sh in ${CMAKE_CURRENT_SOURCE_DIR} first")
+endif()
+install(DIRECTORY launch rviz urdf meshes DESTINATION share/${PROJECT_NAME})
+ament_package()

@@ -1,0 +1,49 @@
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+      Cell Size: 0.1
+      Plane Cell Count: 20
+      Reference Frame: world
+    - Class: rviz_default_plugins/RobotModel
+      Name: Follower
+      Enabled: true
+      Description Source: Topic
+      Description Topic:
+        Value: /robot_description
+      Visual Enabled: true
+      Collision Enabled: false
+    - Class: rviz_default_plugins/RobotModel
+      Name: Leader
+      Enabled: true
+      Description Source: Topic
+      Description Topic:
+        Value: /so101/leader/robot_description
+      TF Prefix: leader
+      Alpha: 0.6
+      Visual Enabled: true
+      Collision Enabled: false
+    - Class: rviz_default_plugins/TF
+      Name: TF
+      Enabled: false
+  Global Options:
+    Fixed Frame: world
+    Background Color: 48; 48; 48
+    Frame Rate: 30
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Distance: 0.9
+      Focal Point: {X: 0.05, Y: 0.17, Z: 0.12}
+      Pitch: 0.45
+      Yaw: 0.6
+      Name: Current View
+      Target Frame: world
+Window Geometry:
+  Width: 1280
+  Height: 800

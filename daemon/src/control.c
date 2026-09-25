@@ -7,9 +7,11 @@
  *   3. sync-read follower pos/vel/load/V/T    (follower bus)
  *   4. apply the mode requested by the supervisor (torque on/off, latch hold)
  *   5. compute the goal (teleop map or hold), rate-limit it, sync-write it.
- *      Soft start: after every mode change into TELEOP/HOLD the goal moves
- *      at ramp_step ticks/cycle until it is within ramp_done ticks of the
- *      target on every joint; then the (fast) teleop limit max_step applies.
+ *      Soft start: after every mode change into TELEOP/HOLD each joint moves
+ *      at ramp_step ticks/cycle until IT reaches its target (within ramp_done
+ *      ticks); from then on that joint uses the fast teleop limit max_step.
+ *      Per-joint, so a leader that keeps moving never traps the arm in the
+ *      slow ramp.
  *   6. publish the snapshot to shared memory (seqlock, never blocks)
  *
  * Reconnection: if a bus fails REOPEN_AFTER cycles in a row (USB unplugged),
@@ -85,7 +87,7 @@ void *control_thread(void *arg)
     int16_t goal[SO101_NJ] = {0}, hold[SO101_NJ] = {0};
     unsigned applied = SO101_MODE_IDLE;
     int torque = 0;
-    int ramping = 0;
+    unsigned ramp_mask = 0;                  /* bit j = joint j still ramping */
     uint8_t bl[SO101_NJ * 2], bf[SO101_NJ * 8];
 
     /* Safe start: nothing holds torque until the supervisor asks for it.
@@ -181,14 +183,12 @@ void *control_thread(void *arg)
                 torque = 0;
             }
             if (req != applied && torque)
-                ramping = 1;                     /* soft start on every entry */
+                ramp_mask = (1u << SO101_NJ) - 1; /* soft start on every entry */
             applied = req;
         }
 
         /* ---- 4. goal: teleop map or hold, rate-limited ---- */
         if (torque) {
-            const int step = ramping ? c->ramp_step : c->max_step;
-            int max_err = 0;
             for (int j = 0; j < SO101_NJ; j++) {
                 int target = goal[j];
                 if (applied == SO101_MODE_TELEOP && s.leader_ok)
@@ -196,14 +196,15 @@ void *control_thread(void *arg)
                 else if (applied == SO101_MODE_HOLD)
                     target = hold[j];
                 int d = target - goal[j];
-                if (abs(d) > max_err) max_err = abs(d);
+                const unsigned bit = 1u << j;
+                if ((ramp_mask & bit) && abs(d) <= c->ramp_done)
+                    ramp_mask &= ~bit;            /* caught up: full speed */
+                const int step = (ramp_mask & bit) ? c->ramp_step : c->max_step;
                 if (d > step) d = step;
                 if (d < -step) d = -step;
                 goal[j] = (int16_t)(goal[j] + d);
             }
             write_goal(&c->follower, ids_f, goal);
-            if (ramping && max_err <= c->ramp_done)
-                ramping = 0;
         } else if (s.follower_ok) {
             for (int j = 0; j < SO101_NJ; j++)
                 goal[j] = s.follower_pos[j];      /* track, for a smooth enable */
@@ -215,7 +216,9 @@ void *control_thread(void *arg)
             s.follower_goal[j] = goal[j];
         s.mode = (uint8_t)applied;
         s.torque_on = (uint8_t)torque;
-        s.ramping = (uint8_t)(torque && ramping);
+        if (!torque)
+            ramp_mask = 0;
+        s.ramping = (uint8_t)ramp_mask;           /* non-zero while ramping */
         s.faults = atomic_load_explicit(&shm->faults, memory_order_relaxed);
         s.bus_leader_ns = (int32_t)(t1 - t0);
         s.bus_follower_ns = (int32_t)(t2 - t1);

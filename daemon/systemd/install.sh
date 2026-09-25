@@ -21,7 +21,7 @@ id so101 >/dev/null 2>&1 || useradd --system --gid so101 --groups dialout \
 
 echo "== binaries"
 systemctl is-active --quiet so101d && systemctl stop so101d || true
-install -m 755 build/so101d build/so101ctl /usr/local/bin/
+install -m 755 build/so101d build/so101ctl build/so101_log /usr/local/bin/
 install -D -m 755 systemd/so101-wait-ports /usr/local/libexec/so101-wait-ports
 
 echo "== calibration -> /etc/so101"
