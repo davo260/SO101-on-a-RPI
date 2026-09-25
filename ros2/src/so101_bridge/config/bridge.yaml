@@ -13,5 +13,8 @@ so101_bridge:
     # Gripper: calibration range_min (closed) .. range_max (open) mapped linearly
     # to [closed_rad, open_rad] of each URDF. If the jaws still overlap when
     # closed, raise closed_rad a little (e.g. 0.05); if they never touch, lower it.
+    # Live tuning (no rebuild), from any ROS 2 machine:
+    #   ros2 param set /so101_bridge follower_gripper_rad "[-0.3, 1.745]"
+    # then copy the value you like here and re-run run_bridge.sh.
     follower_gripper_rad: [0.0, 1.745]
     leader_gripper_rad:   [0.0, 0.785]

@@ -17,6 +17,7 @@ import math
 import time
 
 import rclpy
+from rcl_interfaces.msg import SetParametersResult
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from std_msgs.msg import String
@@ -43,6 +44,7 @@ class So101Bridge(Node):
                                 p("leader_signs", [1.0] * 6).value,
                                 p("leader_offsets", [0.0] * 6).value,
                                 p("leader_gripper_rad", [0.0, 0.785]).value)
+        self.add_on_set_parameters_callback(self.on_params)
         self.arm = None
         self._next_attach = 0.0
         self._attach()
@@ -54,6 +56,25 @@ class So101Bridge(Node):
         self.create_timer(1.0, self.status)
         self.last_cycle = None
         self.rate = rate
+
+    def on_params(self, params):
+        """Live tuning of the model, e.g. from the VM:
+        ros2 param set /so101_bridge follower_gripper_rad "[-0.3, 1.745]" """
+        targets = {
+            "follower_signs": (self.f_conv, "signs"), "follower_offsets": (self.f_conv, "offsets"),
+            "follower_gripper_rad": (self.f_conv, "gripper_rad"),
+            "leader_signs": (self.l_conv, "signs"), "leader_offsets": (self.l_conv, "offsets"),
+            "leader_gripper_rad": (self.l_conv, "gripper_rad"),
+        }
+        for prm in params:
+            if prm.name in targets:
+                conv, attr = targets[prm.name]
+                v = list(prm.value)
+                if len(v) != (2 if attr == "gripper_rad" else 6):
+                    return SetParametersResult(successful=False, reason="wrong length")
+                setattr(conv, attr, tuple(v) if attr == "gripper_rad" else v)
+                self.get_logger().info(f"{prm.name} = {v}")
+        return SetParametersResult(successful=True)
 
     def _attach(self):
         """(Re)attach to /dev/shm/so101; retried at most once per second."""
