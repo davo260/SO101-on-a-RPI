@@ -1,0 +1,20 @@
+file                  metric            mean      p50      p99    p99.9      max   (us)
+idle_noload           wake_lat_us       15.3     13.2     31.7     40.6    102.0
+idle_noload           exec_us         2212.0   2205.2   2356.9   2697.6   7882.3
+idle_noload           bus_l_us         929.8    923.2   1018.6   1059.9   3732.3
+idle_noload           bus_f_us        1282.1   1277.3   1358.2   1432.8   4799.3
+idle_noload           cycles 60002, logger missed 0, exec>10 ms: 0, modes ['IDLE']
+
+idle_stress           wake_lat_us       33.8     28.9     84.2    140.5    291.0
+idle_stress           exec_us         2302.8   2249.6   3890.4   7060.7  11792.2
+idle_stress           bus_l_us         987.8    950.7   1834.3   5697.1   7719.0
+idle_stress           bus_f_us        1314.8   1293.5   1417.2   4731.3   8670.0
+idle_stress           cycles 59236, logger missed 761, exec>10 ms: 4, modes ['IDLE']
+
+teleop_stress         wake_lat_us       35.4     25.8    141.4    178.0    207.6
+teleop_stress         exec_us         2323.2   2261.8   3554.9   6978.2   9675.6
+teleop_stress         bus_l_us         983.5    943.5   1603.5   5650.9   5685.1
+teleop_stress         bus_f_us        1339.5   1310.9   1516.8   4756.4   7076.9
+teleop_stress         cycles 5996, logger missed 5, exec>10 ms: 0, modes ['IDLE', 'TELEOP']
+
+-> docs/results/2026-09-29/jitter.png

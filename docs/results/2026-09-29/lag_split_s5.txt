@@ -1,0 +1,8 @@
+results/teleop_s5.csv: window 3901 cycles
+  joint           L->goal  goal->F    L->F   [ms]
+  shoulder_pan        568      116     685
+  shoulder_lift       537      120     655
+  elbow_flex          684      153     848
+  wrist_flex          541      128     679
+  wrist_roll          109      145     257
+  gripper             990      121     990

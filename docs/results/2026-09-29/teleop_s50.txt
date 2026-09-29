@@ -1,0 +1,10 @@
+results/teleop_s50.csv: 4001 cycles, 40.0 s, 0 missed by the logger
+  lag window: t = 1.0 .. 40.0 s (3899 cycles)
+  joint           lag [ms]   corr  RMS err  RMS err@lag
+  shoulder_pan         131   1.00     3.92         0.59
+  shoulder_lift        138   1.00     3.82         1.90
+  elbow_flex           139   1.00     4.71         1.98
+  wrist_flex           134   1.00     5.53         0.98
+  wrist_roll           154   1.00     4.34         0.84
+  gripper              391   0.98     8.75         4.03
+saved docs/results/2026-09-29/teleop_s50.png
