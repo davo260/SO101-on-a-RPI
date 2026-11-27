@@ -29,7 +29,10 @@ Proyecto final de **Sistemas Embebidos** — Pontificia Universidad Javeriana.
 | [`daemon/systemd/`](daemon/systemd/) | Unidad `Type=notify` + `WatchdogSec=2`, usuario sin privilegios `so101` con `CAP_SYS_NICE`/`CAP_IPC_LOCK`, `ProtectSystem=strict`, IPC con permisos `0660`. `install.sh` idempotente. |
 | [`clients/python/`](clients/python/) | `so101.py`: lee el estado y manda comandos desde Python (base para MQTT/dashboard). |
 | [`ros2/`](ros2/) | `so101_bridge` (shm → `/joint_states` a 50 Hz, `/so101/cmd`) en Docker sobre la Pi y `so101_description` (URDF + RViz) en la VM. Transporte Zenoh por TCP para redes con NAT o sin multicast. |
-| [`docs/`](docs/) | [`INTERFACE.md`](docs/INTERFACE.md) (contrato para clientes) y resultados medidos en [`docs/results/`](docs/results/2026-09-29/). |
+| [`docs/`](docs/) | [`INTERFACE.md`](docs/INTERFACE.md) (contrato para clientes) y resultados medidos en [`docs/results/`]
+| [`mqttBroker/`](mqttBroker/) | Broker MQTT (Mosquitto en Docker) del dashboard, en el mismo computador que el servidor. `compose.yaml` levanta el contenedor; `config/` contiene `mosquitto.conf`, `acl` (permisos por tópico) y `password.txt` (usuarios); `data/` guarda la persistencia y `log/` el log. Incluye `config/mock_raspberry.py`, un simulador de la Raspberry para probar el dashboard sin hardware. Escucha en el puerto 1883 y se accede por Tailscale. |
+| [`RobotDashboard/`](RobotDashboard/) | Dashboard web de control remoto. `server.js` (Node.js) sirve la interfaz y hace de pasarela WebSocket ↔ MQTT; `src/` contiene `index.html`, `css/` y `js/` (`app.js` con la lógica y `arm3d.js` con los visores 3D); `test.js` es un script de pruebas. Incluye los modos de control Local / Dashboard, modelos 3D de la consigna y del brazo real, telemetría y consola de eventos. |
+| [`raspi/`](raspi/) | Cliente MQTT de la Raspberry Pi: `mqtt_bridgeV8.py` (puente MQTT ↔ brazos; lee el modo y las fallas de `so101d` con `so101ctl`), `so101_bridge.ini` (broker, puertos y demonio), `so101_calibration.ini` (calibración líder/seguidor) y los scripts `inicializar_bus.sh` y `normalizacion.sh`, que automatizan los puertos seriales del demonio y del puente usando `bus_mux.py` (en [`driver/`](driver/)). |(docs/results/2026-09-29/). |
 
 ## Funcionalidades del demonio
 
