@@ -137,7 +137,7 @@ Sistema para operar y monitorizar un par de brazos robóticos **SO-101 (líder /
 RobotDashboard/
 ├── server.js            # Servidor Node.js (HTTP + WebSocket + cliente MQTT)
 ├── package.json
-└── public/
+└── src/
     ├── index.html       # Estructura de la interfaz
     ├── css/
     │   └── styles.css   # Estilos
