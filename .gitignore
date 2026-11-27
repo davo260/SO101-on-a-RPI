@@ -1,4 +1,4 @@
-build/
+mbuild/
 __pycache__/
 *.pyc
 /results/
@@ -9,3 +9,7 @@ __pycache__/
 
 # Ignorar dependencias de Node.js dentro de dashboard
 /RobotDasboard/node_modules/
+
+
+# Credenciales MQTT
+/mqttBroker/config/password.txt
