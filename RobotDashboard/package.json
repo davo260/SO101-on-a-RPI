@@ -1,0 +1,16 @@
+{
+  "name": "robotic-arm-dashboard",
+  "version": "1.0.0",
+  "description": "Dashboard de teleoperación y monitoreo para brazo robótico con MQTT bajo demanda",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.6.1",
+    "express": "^4.19.2",
+    "mqtt": "^5.5.0",
+    "ws": "^8.16.0"
+  }
+}

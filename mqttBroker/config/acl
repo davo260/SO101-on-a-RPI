@@ -1,0 +1,11 @@
+user dashboard
+topic write so101/cmd
+topic read so101/state
+topic read so101/event
+topic read so101/cmd/result
+
+user raspberry
+topic read so101/cmd
+topic write so101/state
+topic write so101/event
+topic write so101/cmd/result

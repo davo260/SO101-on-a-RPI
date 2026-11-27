@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Robotic Arm Remote Control Dashboard - SO101</title>
+  <link rel="stylesheet" href="css/styles.css">
+  <style>
+    /* Barra de modo de operación (so101ctl). Autocontenida: no depende de styles.css */
+    .mode-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 16px; }
+    .mode-bar-label { font-size: 12px; letter-spacing: .06em; text-transform: uppercase; opacity: .7; margin-right: 4px; }
+    .mode-btn { opacity: .85; }
+    .mode-btn.active { opacity: 1; font-weight: 700; box-shadow: 0 0 0 2px #38ef7d; }
+    .mode-btn-estop { box-shadow: 0 0 0 1px #ef4444; }
+    .mode-btn-estop.active { box-shadow: 0 0 0 2px #ef4444; }
+
+    /* Selector del modo de control: Local (por defecto) / Dashboard */
+    .ctrl-switch { display: inline-flex; border-radius: 6px; overflow: hidden; box-shadow: 0 0 0 1px rgba(255,255,255,.25); }
+    .ctrl-btn { border-radius: 0; opacity: .75; }
+    .ctrl-btn.active { opacity: 1; font-weight: 700; background: #38ef7d; color: #0b1220; }
+    input[type=range]:disabled { opacity: .55; cursor: not-allowed; }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+</head>
+<body>
+
+  <!-- Barra Superior -->
+  <header class="top-bar">
+    <div class="brand">
+      <h1>ROBOTIC ARM REMOTE CONTROL DASHBOARD</h1>
+      <div class="system-pills">
+        <span class="status-badge" id="netStatus"><span class="dot"></span> MQTT Desconectado</span>
+        <span class="pill pill-mode mode-idle" id="robotMode">MODO: IDLE</span>
+        <span class="pill pill-faults" id="robotFaults">Fallas: Ninguna</span>
+      </div>
+    </div>
+    <div class="actions">
+      <button class="btn btn-mqtt-connect" id="btnMqttToggle">Conectar MQTT</button>
+      <div class="ctrl-switch" id="ctrlSwitch" role="group" aria-label="Modo de control">
+        <button class="btn ctrl-btn" id="btnCtrlDashboard" data-control="dashboard"
+                title="Los selectores mueven el brazo líder en tiempo real">Modo Dashboard</button>
+        <button class="btn ctrl-btn active" id="btnCtrlLocal" data-control="local"
+                title="El usuario mueve el líder a mano; el dashboard solo observa">Modo Local</button>
+      </div>
+      <button class="btn btn-home" id="btnHome">Home Position</button>
+      <button class="btn btn-danger" id="btnEmergency">EMERGENCY STOP</button>
+    </div>
+  </header>
+
+  <!-- Modo de operación del demonio: equivale a escribir "so101ctl <modo>" en la Raspberry -->
+  <section class="mode-bar" id="modeBar">
+    <span class="mode-bar-label">Modo de operación (so101ctl)</span>
+    <button class="btn mode-btn" data-mode="idle">IDLE</button>
+    <button class="btn mode-btn" data-mode="hold">HOLD</button>
+    <button class="btn mode-btn" data-mode="teleop">TELEOP</button>
+    <button class="btn mode-btn mode-btn-estop" data-mode="estop">ESTOP</button>
+    <button class="btn mode-btn" data-mode="reset">RESET</button>
+  </section>
+
+  <!-- Área Principal -->
+  <main class="dashboard-grid">
+    <!-- Panel Izquierdo: Controles por Eje y Sensores -->
+    <section class="controls-panel">
+      
+      <!-- shoulder_pan: -100 a 100 -->
+      <article class="joint-card" data-joint="shoulder_pan">
+        <div class="card-header">
+          <label for="slider-shoulder_pan">shoulder_pan (Base)</label>
+          <span class="val-display" id="val-shoulder_pan">0</span>
+        </div>
+        <input type="range" id="slider-shoulder_pan" min="-100" max="100" value="0">
+        <div class="telemetry-row">
+          <div class="metric metric-temp">
+            <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>
+            </svg>
+            <span class="label">Temp</span>
+            <span class="val" id="temp-shoulder_pan">-- °C</span>
+          </div>
+          <div class="metric metric-volt">
+            <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+            <span class="label">Volt</span>
+            <span class="val" id="volt-shoulder_pan">-- V</span>
+          </div>
+        </div>
+      </article>
+
+      <!-- shoulder_lift: -100 a 100 -->
+      <article class="joint-card" data-joint="shoulder_lift">
+        <div class="card-header">
+          <label for="slider-shoulder_lift">shoulder_lift (Hombro)</label>
+          <span class="val-display" id="val-shoulder_lift">0</span>
+        </div>
+        <input type="range" id="slider-shoulder_lift" min="-100" max="100" value="0">
+        <div class="telemetry-row">
+          <div class="metric metric-temp">
+            <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>
+            </svg>
+            <span class="label">Temp</span>
+            <span class="val" id="temp-shoulder_lift">-- °C</span>
+          </div>
+          <div class="metric metric-volt">
+            <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+            <span class="label">Volt</span>
+            <span class="val" id="volt-shoulder_lift">-- V</span>
+          </div>
+        </div>
+      </article>
+
+      <!-- elbow_flex: -100 a 100 -->
+      <article class="joint-card" data-joint="elbow_flex">
+        <div class="card-header">
+          <label for="slider-elbow_flex">elbow_flex (Codo)</label>
+          <span class="val-display" id="val-elbow_flex">0</span>
+        </div>
+        <input type="range" id="slider-elbow_flex" min="-100" max="100" value="0">
+        <div class="telemetry-row">
+          <div class="metric metric-temp">
+            <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>
+            </svg>
+            <span class="label">Temp</span>
+            <span class="val" id="temp-elbow_flex">-- °C</span>
+          </div>
+          <div class="metric metric-volt">
+            <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+            <span class="label">Volt</span>
+            <span class="val" id="volt-elbow_flex">-- V</span>
+          </div>
+        </div>
+      </article>
+
+      <!-- wrist_flex: -100 a 100 -->
+      <article class="joint-card" data-joint="wrist_flex">
+        <div class="card-header">
+          <label for="slider-wrist_flex">wrist_flex (Muñeca Flexión)</label>
+          <span class="val-display" id="val-wrist_flex">0</span>
+        </div>
+        <input type="range" id="slider-wrist_flex" min="-100" max="100" value="0">
+        <div class="telemetry-row">
+          <div class="metric metric-temp">
+            <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>
+            </svg>
+            <span class="label">Temp</span>
+            <span class="val" id="temp-wrist_flex">-- °C</span>
+          </div>
+          <div class="metric metric-volt">
+            <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+            <span class="label">Volt</span>
+            <span class="val" id="volt-wrist_flex">-- V</span>
+          </div>
+        </div>
+      </article>
+
+      <!-- wrist_roll: -100 a 100 (0..4095) -->
+      <article class="joint-card" data-joint="wrist_roll">
+        <div class="card-header">
+          <label for="slider-wrist_roll">wrist_roll (Muñeca Giro)</label>
+          <span class="val-display" id="val-wrist_roll">0</span>
+        </div>
+        <input type="range" id="slider-wrist_roll" min="-100" max="100" value="0">
+        <div class="telemetry-row">
+          <div class="metric metric-temp">
+            <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>
+            </svg>
+            <span class="label">Temp</span>
+            <span class="val" id="temp-wrist_roll">-- °C</span>
+          </div>
+          <div class="metric metric-volt">
+            <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+            <span class="label">Volt</span>
+            <span class="val" id="volt-wrist_roll">-- V</span>
+          </div>
+        </div>
+      </article>
+
+      <!-- gripper: 0 a 100 (2040..3286) -->
+      <article class="joint-card" data-joint="gripper">
+        <div class="card-header">
+          <label for="slider-gripper">gripper (0 Cerrado - 100 Abierto)</label>
+          <span class="val-display" id="val-gripper">0%</span>
+        </div>
+        <input type="range" id="slider-gripper" min="0" max="100" value="0">
+        <div class="telemetry-row">
+          <div class="metric metric-temp">
+            <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>
+            </svg>
+            <span class="label">Temp</span>
+            <span class="val" id="temp-gripper">-- °C</span>
+          </div>
+          <div class="metric metric-volt">
+            <svg class="metric-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+            </svg>
+            <span class="label">Volt</span>
+            <span class="val" id="volt-gripper">-- V</span>
+          </div>
+        </div>
+      </article>
+
+    </section>
+
+    <!-- Panel Derecho: Visores 3D Duales -->
+    <section class="viewport-panel">
+      <div class="arm-canvas-container" id="targetContainer">
+        <div class="canvas-tag tag-target">Consigna (Setpoint)</div>
+      </div>
+
+      <div class="arm-canvas-container" id="realContainer">
+        <div class="canvas-tag tag-real">Brazo Real (Telemetría so101/state)</div>
+      </div>
+    </section>
+  </main>
+
+  <!-- Consola de Eventos -->
+  <footer class="logs-console">
+    <div class="logs-header">
+      <div class="logs-title">
+        <span class="icon">▤</span> CAPTURADOR DE EVENTOS MQTT & SISTEMA (so101)
+      </div>
+      <button class="btn-clear-logs" id="btnClearLogs">Limpiar registros</button>
+    </div>
+    <div class="logs-body" id="logsFeed"></div>
+  </footer>
+
+  <script src="js/arm3d.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
