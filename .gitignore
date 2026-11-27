@@ -13,3 +13,5 @@ __pycache__/
 
 # Credenciales MQTT
 /mqttBroker/config/password.txt
+
+.DS_Store
