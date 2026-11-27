@@ -2,3 +2,10 @@ build/
 __pycache__/
 *.pyc
 /results/
+
+# Ignorar logs y datos de Mosquitto
+/mqttBroker/log/
+/mqttBroker/data/
+
+# Ignorar dependencias de Node.js dentro de dashboard
+/RobotDasboard/node_modules/
